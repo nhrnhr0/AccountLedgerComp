@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel File Upload with Selectable Table</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            user-select: none; /* Prevent text selection */
+        }
+        .highlight {
+            background-color: yellow;
+        }
+        .hidden {
+            display: none;
+        }
+        /* Remove default focus styles */
+        td:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload an Excel File</h1>
+        <button id="getSelectionBtn" class="btn btn-primary">Get Selected Data</button>
+
+        <input type="file" id="fileInput" accept=".xlsx, .xls" class="form-control-file mt-3" />
+        <p class="mt-3">Select a rectangular range of cells by clicking and dragging:</p>
+        <table id="excelTable" class="table table-bordered"></table>
+        <div id="selectedData"></div>
+    </div>
+    <script>
+        let startCell = null;
+        let endCell = null;
+        let isSelecting = false;
+        let isMouseInsideTable = true; // Flag to track if mouse is inside the table
+        const getSelectionBtn = document.getElementById('getSelectionBtn');
+
+        document.getElementById('fileInput').addEventListener('change', handleFile, false);
+
+        function handleFile(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const htmlString = XLSX.utils.sheet_to_html(worksheet);
+                document.getElementById('excelTable').innerHTML = htmlString;
+
+                // Add event listeners for table cells to allow selection
+                const table = document.querySelector("#excelTable");
+                table.addEventListener('mousedown', startSelection);
+                table.addEventListener('mousemove', selectCells);
+                table.addEventListener('mouseup', endSelection);
+                table.addEventListener('mouseleave', handleMouseLeave);
+                table.addEventListener('mouseenter', handleMouseEnter);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function startSelection(event) {
+            if (event.target.tagName === 'TD') {
+                isSelecting = true;
+                startCell = event.target;
+                clearSelection();
+                addCellToSelection(startCell);
+            }
+        }
+
+        function selectCells(event) {
+            if (isSelecting && event.target.tagName === 'TD') {
+                endCell = event.target;
+                updateSelection();
+            }
+        }
+
+        function endSelection() {
+            isSelecting = false;
+        }
+
+        function handleMouseLeave() {
+            if (!isSelecting) {
+                isMouseInsideTable = false;
+            }
+        }
+
+        function handleMouseEnter() {
+            isMouseInsideTable = true;
+        }
+
+        function updateSelection() {
+            if (!startCell || !endCell) return;
+
+            const table = document.querySelector("#excelTable");
+            const cells = table.querySelectorAll('td');
+            const startRow = startCell.parentElement.rowIndex;
+            const startCol = startCell.cellIndex;
+            const endRow = endCell.parentElement.rowIndex;
+            const endCol = endCell.cellIndex;
+
+            clearSelection(); // Clear previous selection
+
+            cells.forEach(cell => {
+                const rowIndex = cell.parentElement.rowIndex;
+                const colIndex = cell.cellIndex;
+                if (rowIndex >= Math.min(startRow, endRow) &&
+                    rowIndex <= Math.max(startRow, endRow) &&
+                    colIndex >= Math.min(startCol, endCol) &&
+                    colIndex <= Math.max(startCol, endCol)) {
+                    addCellToSelection(cell);
+                }
+            });
+        }
+
+        function addCellToSelection(cell) {
+            if (!cell.classList.contains('highlight')) {
+                cell.classList.add('highlight');
+            }
+        }
+
+        function clearSelection() {
+            document.querySelectorAll('.highlight').forEach(cell => {
+                cell.classList.remove('highlight');
+            });
+        }
+
+        document.getElementById('getSelectionBtn').addEventListener('click', getSelectedData);
+
+        function getSelectedData() {
+            const selectedCells = Array.from(document.querySelectorAll('.highlight'));
+            const minRow = Math.min(...selectedCells.map(cell => cell.parentElement.rowIndex));
+            const maxRow = Math.max(...selectedCells.map(cell => cell.parentElement.rowIndex));
+            const minCol = Math.min(...selectedCells.map(cell => cell.cellIndex));
+            const maxCol = Math.max(...selectedCells.map(cell => cell.cellIndex));
+
+            const selectedData = [];
+            for (let row = minRow; row <= maxRow; row++) {
+                const rowData = [];
+                for (let col = minCol; col <= maxCol; col++) {
+                    const cell = document.querySelector(`table tr:nth-child(${row + 1}) td:nth-child(${col + 1})`);
+                    rowData.push(cell ? cell.innerText : '');
+                }
+                selectedData.push(rowData);
+            }
+            // export selected data to exel
+            const ws = XLSX.utils.aoa_to_sheet(selectedData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            XLSX.writeFile(wb, "selectedData " + document.getElementById('fileInput').files[0].name.split('.')[0] + ".xlsx");
+            // display selected data
+            
+        }
+    </script>
+</body>
+</html>
